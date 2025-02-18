@@ -1,6 +1,7 @@
 import requests
 import json
 
+
 base_url = "https://api.daac.asf.alaska.edu/services/search/param"
 
 def fetch_data(platform, latitude, longitude, start_date, end_date, result_limit):
