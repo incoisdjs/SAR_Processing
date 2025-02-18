@@ -60,15 +60,11 @@ if st.button("Fetch Data"):
                 # Get the URL for downloading
                 download_url = feature['properties'].get('url', None)
                 
-                # Add a download button if the URL exists
+                # Add a link to open the URL if it exists
                 if download_url:
-                    st.download_button(
-                        label="Download Data",
-                        data=download_url,
-                        file_name=f"{nearest_location}.xml",  # You can customize the file name
-                        mime="application/xml",
-                        help="Click to download the metadata file.",
-                        key=str(uuid.uuid4())  # Generate a unique key for each button
+                    st.markdown(
+                        f"[Open Metadata]({download_url})",  # Create a clickable link
+                        unsafe_allow_html=True
                     )
             
             # Display the entire response for the platform
