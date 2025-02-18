@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import uuid  # Import uuid for generating unique keys
 from api import fetch_data
 from utils import process_response, bearing_to_direction
 from shapely.geometry import Point, Polygon
@@ -55,6 +56,20 @@ if st.button("Fetch Data"):
                 # Display the feature details
                 nearest_location = feature['properties'].get('sceneName', 'Unknown Location')
                 st.write(f"Nearest Location: {nearest_location}, Distance: {distance:.2f} units")
+                
+                # Get the URL for downloading
+                download_url = feature['properties'].get('url', None)
+                
+                # Add a download button if the URL exists
+                if download_url:
+                    st.download_button(
+                        label="Download Data",
+                        data=download_url,
+                        file_name=f"{nearest_location}.xml",  # You can customize the file name
+                        mime="application/xml",
+                        help="Click to download the metadata file.",
+                        key=str(uuid.uuid4())  # Generate a unique key for each button
+                    )
             
             # Display the entire response for the platform
             st.json(data)  # Display the raw JSON response
