@@ -54,18 +54,17 @@ if st.button("Fetch Data"):
                     distance = point_of_interest.distance(polygon)
 
                 # Display the feature details
-                nearest_location = feature['properties'].get('sceneName', 'Unknown Location')
+                nearest_location = feature['properties'].get('url', 'Unknown Location')
                 st.write(f"Nearest Location: {nearest_location}, Distance: {distance:.2f} units")
                 
                 # Get the URL for downloading
                 download_url = feature['properties'].get('url', None)
                 
-                # Add a link to open the URL if it exists
+                # Add a button to open the URL if it exists
                 if download_url:
-                    st.markdown(
-                        f"[Open Metadata]({download_url})",  # Create a clickable link
-                        unsafe_allow_html=True
-                    )
+                    if st.button(f"Download Data", key=str(uuid.uuid4()),type="primary"):
+                        js = f"window.open('{download_url}', '_blank')"
+                        st.markdown(f"<script>{js}</script>", unsafe_allow_html=True)
             
             # Display the entire response for the platform
             st.json(data)  # Display the raw JSON response
