@@ -28,7 +28,7 @@ end_date = st.date_input("End Date")
 result_limit = st.number_input("Enter Limit for Results to Fetch:", min_value=1, value=5)
 
 # Button to fetch data from Sentinel API
-if st.button("Fetch Data"):
+if st.button("Fetch Alaska Data"):
     # Flag to check if any valid features were found
     any_valid_features = False
 
