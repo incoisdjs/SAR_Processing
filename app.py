@@ -10,8 +10,6 @@ from requests_oauthlib import OAuth2Session
 import dotenv
 import os
 import streamlit.components.v1 as components
-import boto3
-import webbrowser
 from botocore.config import Config
 from botocore.auth import UNSIGNED_PAYLOAD
 from urllib.parse import urlparse
