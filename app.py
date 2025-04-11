@@ -400,7 +400,7 @@ with tab2:
     
     with sidebar_col:
         st.header("Credentials")
-        with st.form(key="credentials_form"):
+        with st.form(key="search_form"):
             username = st.text_input("Copernicus Username", key="username")
             password = st.text_input("Copernicus Password", type="password", key="password")
 
@@ -506,15 +506,31 @@ with tab2:
                             'Cloud Cover': row.get('CloudCover', 'N/A')
                         })
 
-                        with st.form(key=f"form_{row['Id']}"):
-                            output_dir = st.text_input(
-                                "Select download directory",
-                                value=os.path.join(os.getcwd(), "downloads"),
-                                key=f"dir_{row['Id']}"
-                            )
-                            submit = st.form_submit_button("Download")
+                        with st.form(key=f"download_form_{row['Id']}"):
+                            # Get the default Downloads folder path
+                            downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+                            
+                            # Create two columns for the directory input and browse button
+                            dir_col, browse_col = st.columns([3, 1])
+                            
+                            with dir_col:
+                                output_dir = st.text_input(
+                                    "Select download directory",
+                                    value=downloads_dir,
+                                    key=f"dir_{row['Id']}"
+                                )
+                            
+                            with browse_col:
+                                browse_clicked = st.form_submit_button("Browse")
+                            
+                            if browse_clicked:
+                                # Show a message about how to enter the path
+                                st.info("Please enter the full path to your desired download directory")
+                                st.info("Example: C:\\Users\\YourUsername\\Downloads")
+                            
+                            download_submitted = st.form_submit_button("Download")
 
-                            if submit:
+                            if download_submitted:
                                 progress_placeholder = st.empty()
                                 status_placeholder = st.empty()
                                 
