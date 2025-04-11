@@ -1,51 +1,17 @@
 import streamlit as st
-import json
-import uuid
-from api import fetch_data
-from utils import process_response, bearing_to_direction
-from shapely.geometry import Point, Polygon, shape
 import requests
-from oauthlib.oauth2 import BackendApplicationClient
-from requests_oauthlib import OAuth2Session
-import dotenv
 import os
-import streamlit.components.v1 as components
-from urllib.parse import urlparse
-import folium
-from streamlit_folium import st_folium
-import numpy as np
+import json
 import pandas as pd
 import geopandas as gpd
-from datetime import date, datetime, timedelta
+from shapely.geometry import shape
+from datetime import date, timedelta
+import folium
+from streamlit_folium import st_folium
 import time
 import asyncio
 import aiohttp
 import io
-
-dotenv.load_dotenv()
-
-# Initialize session state for persistent data storage
-if 'auth_token' not in st.session_state:
-    st.session_state.auth_token = None
-if 'search_results' not in st.session_state:
-    st.session_state.search_results = {}
-if 'download_data' not in st.session_state:
-    st.session_state.download_data = {}
-if 'download_progress' not in st.session_state:
-    st.session_state.download_progress = {}
-if 'downloaded_files' not in st.session_state:
-    st.session_state.downloaded_files = {}
-
-# List of platforms for Sentinel API queries
-platforms = [
-    "Sentinel-1", "SLC-BURST", "OPERA-S1", "ALOS PALSAR",
-    "ALOS AVNIR-2", "SIR-C", "ARIA S1 GUNW", "SMAP",
-    "UAVSAR", "RADARSAT-1", "ERS", "JERS-1", "AIRSAR", "SEASAT"
-]
-
-# Current date, time and user info - UPDATED with user's values
-current_datetime = "2025-04-07 21:10:21"  # UTC
-current_user = "SauravHaldar04"
 
 # Copernicus API endpoints
 COPERNICUS_AUTH_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
@@ -62,10 +28,7 @@ def get_keycloak_token(username: str, password: str) -> str:
     try:
         r = requests.post(COPERNICUS_AUTH_URL, data=data)
         r.raise_for_status()
-        token = r.json()["access_token"]
-        # Store token in session state
-        st.session_state.auth_token = token
-        return token
+        return r.json()["access_token"]
     except Exception as e:
         st.error(f"Authentication failed: {str(e)}")
         return None
@@ -144,264 +107,9 @@ def create_map(center_lat=40.7, center_lon=-73.9, zoom=10):
     ).add_to(m)
     return m
 
-# Custom CSS for modern UI
-st.markdown("""
-    <style>
-    /* Main container styling */
-    .main {
-        background-color: #f8f9fa;
-        padding: 2rem;
-    }
-    
-    /* Header styling */
-    .stApp header {
-        background-color: #ffffff;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    /* Title styling */
-    h1 {
-        color: #1a1a1a;
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 1.5rem;
-    }
-    
-    /* Card styling */
-    .card {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    
-    /* Button styling */
-    .stButton button {
-        background-color: #2563eb;
-        color: white;
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-        border: none;
-        transition: all 0.3s ease;
-    }
-    
-    .stButton button:hover {
-        background-color: #1d4ed8;
-        transform: translateY(-1px);
-    }
-    
-    /* Input field styling */
-    .stTextInput input, .stNumberInput input {
-        border-radius: 8px;
-        border: 1px solid #e2e8f0;
-        padding: 0.5rem;
-    }
-    
-    /* Map container styling */
-    .map-container {
-        border-radius: 10px;
-        overflow: hidden;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    
-    /* Feature info styling */
-    .feature-info {
-        background-color: #f8fafc;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        padding: 1rem 2rem;
-        border-radius: 8px;
-    }
-    
-    /* Loading spinner styling */
-    .stSpinner > div {
-        border-color: #2563eb;
-    }
-    
-    /* Success/Error message styling */
-    .stAlert {
-        border-radius: 8px;
-    }
-    
-    /* User info bar */
-    .user-info-bar {
-        background-color: #f1f5f9;
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.9rem;
-    }
+def main():
+    st.title("Sentinel Data Downloader")
 
-    /* Token display */
-    .token-display {
-        background-color: #1e293b;
-        color: #94a3b8;
-        padding: 1rem;
-        border-radius: 8px;
-        font-family: monospace;
-        overflow-x: auto;
-        white-space: pre-wrap;
-        word-break: break-all;
-        margin-top: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    /* Progress bar styling */
-    .progress-container {
-        margin: 1rem 0;
-    }
-    
-    .progress-bar {
-        height: 10px;
-        background-color: #e2e8f0;
-        border-radius: 5px;
-        overflow: hidden;
-    }
-    
-    .progress-bar-fill {
-        height: 100%;
-        background-color: #2563eb;
-        transition: width 0.3s ease;
-    }
-    
-    .progress-text {
-        margin-top: 0.5rem;
-        font-size: 0.9rem;
-        color: #64748b;
-    }
-    
-    /* Download info box */
-    .download-info {
-        background-color: #f0f9ff;
-        border-left: 4px solid #2563eb;
-        padding: 1rem;
-        border-radius: 4px;
-        margin: 1rem 0;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# Main title with modern styling
-st.markdown("""
-    <div style='text-align: center; margin-bottom: 2rem;'>
-        <h1 style='color: #1a1a1a; font-size: 2.5rem; font-weight: 700;'>
-            Satellite Data Explorer
-        </h1>
-        <p style='color: #64748b; font-size: 1.1rem;'>
-            Explore and download satellite imagery from multiple sources
-        </p>
-    </div>
-""", unsafe_allow_html=True)
-
-# Current user and date/time information
-st.markdown(f"""
-    <div class='user-info-bar'>
-        <div>Current User: <b>{current_user}</b></div>
-        <div>Current Date/Time (UTC): <b>{current_datetime}</b></div>
-    </div>
-""", unsafe_allow_html=True)
-
-# Create tabs for different data sources
-tab1, tab2 = st.tabs(["Alaska Satellite Facility", "Copernicus Hub"])
-
-with tab1:
-    st.markdown("""
-        <div class='card'>
-            <h2 style='color: #1a1a1a; font-size: 1.5rem; margin-bottom: 1rem;'>
-                Search Parameters
-            </h2>
-    """, unsafe_allow_html=True)
-    
-    # Input fields in a two-column layout
-    col1, col2 = st.columns(2)
-    with col1:
-        latitude = st.number_input("Latitude", format="%.6f", key="alaska_lat")
-        start_date = st.date_input("Start Date", key="alaska_start")
-    with col2:
-        longitude = st.number_input("Longitude", format="%.6f", key="alaska_lon")
-        end_date = st.date_input("End Date", key="alaska_end")
-    
-    result_limit = st.number_input("Results Limit", min_value=1, value=5, key="alaska_limit")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    if st.button("Search Alaska Data", key="alaska_search"):
-        with st.spinner("Fetching data..."):
-            any_valid_features = False
-            all_features = []
-            
-            for platform in platforms:
-                data = fetch_data(platform, latitude, longitude, start_date, end_date, result_limit)
-                if data and 'features' in data and data['features']:
-                    st.markdown(f"""
-                        <div class='card'>
-                            <h3 style='color: #1a1a1a; font-size: 1.25rem; margin-bottom: 1rem;'>
-                                {platform}
-                            </h3>
-                    """, unsafe_allow_html=True)
-                    
-                    any_valid_features = True
-                    all_features.extend(data['features'])
-                    
-                    for feature in data['features']:
-                        with st.expander(f"Scene: {feature['properties'].get('sceneName', 'Unknown')}", expanded=True):
-                            display_alaska_feature_info(feature)
-                            
-                            if st.checkbox("Show Raw Data", key=f"raw_{feature['properties'].get('fileID', str(uuid.uuid4()))}"):
-                                st.json(feature)
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
-            
-            if any_valid_features:
-                st.markdown("""
-                    <div class='card'>
-                        <h3 style='color: #1a1a1a; font-size: 1.25rem; margin-bottom: 1rem;'>
-                            Coverage Map
-                        </h3>
-                """, unsafe_allow_html=True)
-                
-                try:
-                    center_lat = float(all_features[0]['properties'].get('centerLat', latitude))
-                    center_lon = float(all_features[0]['properties'].get('centerLon', longitude))
-                    
-                    with st.spinner("Generating map..."):
-                        m = create_map(all_features, center_lat, center_lon)
-                        st.markdown('<div class="map-container">', unsafe_allow_html=True)
-                        map_data = st_folium(m, width=800, height=600, returned_objects=["last_active_drawing", "last_clicked"])
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        
-                        # Display information about clicked locations
-                        if map_data["last_clicked"]:
-                            st.write("Clicked location:", map_data["last_clicked"])
-                except Exception as e:
-                    st.error(f"Error displaying map: {str(e)}")
-                
-                st.markdown("</div>", unsafe_allow_html=True)
-            else:
-                st.warning("No valid features returned for any platform.")
-
-with tab2:
-    st.markdown("""
-        <div class='card'>
-            <h2 style='color: #1a1a1a; font-size: 1.5rem; margin-bottom: 1rem;'>
-                Search Parameters
-            </h2>
-    """, unsafe_allow_html=True)
-    
     with st.sidebar:
         st.header("Credentials")
         username = st.text_input("Copernicus Username", key="username")
@@ -560,4 +268,5 @@ with tab2:
                             
                             asyncio.run(download())
 
-    st.markdown("</div>", unsafe_allow_html=True)
+if __name__ == "__main__":
+    main()
