@@ -395,50 +395,40 @@ with tab1:
                 st.warning("No valid features returned for any platform.")
 
 with tab2:
-    st.markdown("""
-        <div class='card'>
-            <h2 style='color: #1a1a1a; font-size: 1.5rem; margin-bottom: 1rem;'>
-                Search Parameters
-            </h2>
-    """, unsafe_allow_html=True)
+    # Create two columns for main content and sidebar with adjusted widths
+    main_col, sidebar_col = st.columns([2, 1])
     
-    with st.sidebar:
+    with sidebar_col:
         st.header("Credentials")
-        username = st.text_input("Copernicus Username", key="username")
-        password = st.text_input("Copernicus Password", type="password", key="password")
+        with st.form(key="credentials_form"):
+            username = st.text_input("Copernicus Username", key="username")
+            password = st.text_input("Copernicus Password", type="password", key="password")
 
-        st.header("Search Parameters")
-        collection = st.selectbox(
-            "Select Collection",
-            ["SENTINEL-1", "SENTINEL-2", "SENTINEL-3", "SENTINEL-5P"],
-            key="collection"
-        )
+            st.header("Search Parameters")
+            collection = st.selectbox(
+                "Select Collection",
+                ["SENTINEL-1", "SENTINEL-2", "SENTINEL-3", "SENTINEL-5P"],
+                key="collection"
+            )
 
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date = st.date_input("Start Date", value=date.today() - timedelta(days=30), key="start_date")
-        with col2:
-            end_date = st.date_input("End Date", value=date.today(), key="end_date")
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date = st.date_input("Start Date", value=date.today() - timedelta(days=30), key="start_date")
+            with col2:
+                end_date = st.date_input("End Date", value=date.today(), key="end_date")
 
-        result_limit = st.number_input("Maximum Results", min_value=1, max_value=1000, value=100, key="limit")
-
-    st.header("Area of Interest")
+            result_limit = st.number_input("Maximum Results", min_value=1, max_value=1000, value=100, key="limit")
+            
+            search_submitted = st.form_submit_button("Search Products")
     
-    # Create two columns for map and manual input
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Create map
-        m = create_map()
-        map_data = st_folium(m, width=700, height=500)
-    
-    with col2:
-        st.subheader("Manual Bounding Box")
+    with main_col:
+        st.header("Area of Interest")
+        
+        # Manual Bounding Box inputs
+        st.subheader("Enter Bounding Box Coordinates")
         st.markdown("Enter coordinates in decimal degrees:")
         
-        # Create input fields for bounding box
         bbox_col1, bbox_col2 = st.columns(2)
-        
         with bbox_col1:
             min_lat = st.number_input("Min Latitude", value=40.4, format="%.4f", key="min_lat")
             min_lon = st.number_input("Min Longitude", value=-74.3, format="%.4f", key="min_lon")
@@ -447,117 +437,99 @@ with tab2:
             max_lat = st.number_input("Max Latitude", value=41.0, format="%.4f", key="max_lat")
             max_lon = st.number_input("Max Longitude", value=-73.5, format="%.4f", key="max_lon")
         
-        # Add a button to update map with manual coordinates
-        if st.button("Update Map with Coordinates"):
-            # Update the map with new bounds
-            m = folium.Map(location=[(min_lat + max_lat)/2, (min_lon + max_lon)/2], zoom_start=10)
-            folium.Rectangle(
-                bounds=[[min_lat, min_lon], [max_lat, max_lon]],
-                color='#ff7800',
-                fill=True,
-                fill_color='#ff7800',
-                fill_opacity=0.2
-            ).add_to(m)
-            map_data = st_folium(m, width=700, height=500, key="updated_map")
-    
-    # Get bounding box from either map or manual input
-    if map_data.get('last_active_drawing'):
-        bounds = map_data['last_active_drawing']['geometry']['coordinates'][0]
-        bbox = f"POLYGON(({bounds[0][0]} {bounds[0][1]}, {bounds[1][0]} {bounds[1][1]}, {bounds[2][0]} {bounds[2][1]}, {bounds[3][0]} {bounds[3][1]}, {bounds[0][0]} {bounds[0][1]}))"
-    else:
-        # Use manual input coordinates
+        # Generate bounding box
         bbox = f"POLYGON(({min_lon} {min_lat}, {min_lon} {max_lat}, {max_lon} {max_lat}, {max_lon} {min_lat}, {min_lon} {min_lat}))"
-    
-    # Show current bounding box
-    st.markdown("### Current Bounding Box")
-    st.code(bbox, language="text")
+        
+        # Show current bounding box
+        st.markdown("### Current Bounding Box")
+        st.code(bbox, language="text")
 
-    if 'search_results' not in st.session_state:
-        st.session_state.search_results = None
-    if 'token' not in st.session_state:
-        st.session_state.token = None
+        if 'search_results' not in st.session_state:
+            st.session_state.search_results = None
+        if 'token' not in st.session_state:
+            st.session_state.token = None
 
-    if st.button("Search Products"):
-        if not username or not password:
-            st.error("Please provide your Copernicus credentials")
-            st.stop()
-
-        try:
-            # Get authentication token
-            token = get_keycloak_token(username, password)
-            if not token:
-                st.stop()
-            
-            st.session_state.token = token
-            
-            # Search for products
-            results = search_products(
-                token=token,
-                bbox=bbox,
-                collection=collection,
-                start_date=start_date.strftime("%Y-%m-%d"),
-                end_date=end_date.strftime("%Y-%m-%d"),
-                result_limit=result_limit
-            )
-            
-            if not results or 'value' not in results:
-                st.error("No products found matching your criteria")
+        if search_submitted:
+            if not username or not password:
+                st.error("Please provide your Copernicus credentials")
                 st.stop()
 
-            st.session_state.search_results = results['value']
-            st.success(f"Found {len(st.session_state.search_results)} products")
+            try:
+                # Get authentication token
+                token = get_keycloak_token(username, password)
+                if not token:
+                    st.stop()
+                
+                st.session_state.token = token
+                
+                # Search for products
+                results = search_products(
+                    token=token,
+                    bbox=bbox,
+                    collection=collection,
+                    start_date=start_date.strftime("%Y-%m-%d"),
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                    result_limit=result_limit
+                )
+                
+                if not results or 'value' not in results:
+                    st.error("No products found matching your criteria")
+                    st.stop()
 
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
+                st.session_state.search_results = results['value']
+                st.success(f"Found {len(st.session_state.search_results)} products")
 
-    if st.session_state.search_results:
-        df = pd.DataFrame.from_dict(st.session_state.search_results)
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
-        if 'GeoFootprint' in df.columns:
-            df['geometry'] = df['GeoFootprint'].apply(shape)
-            gdf = gpd.GeoDataFrame(df).set_geometry('geometry')
+        if st.session_state.search_results:
+            df = pd.DataFrame.from_dict(st.session_state.search_results)
 
-            if collection == "SENTINEL-2":
-                gdf = gdf[~gdf['Name'].str.contains('L1C')]
+            if 'GeoFootprint' in df.columns:
+                df['geometry'] = df['GeoFootprint'].apply(shape)
+                gdf = gpd.GeoDataFrame(df).set_geometry('geometry')
 
-            tabs = st.tabs([f"Product {i+1}" for i in range(len(gdf))])
+                if collection == "SENTINEL-2":
+                    gdf = gdf[~gdf['Name'].str.contains('L1C')]
 
-            for i, tab in enumerate(tabs):
-                with tab:
-                    row = gdf.iloc[i]
-                    st.subheader(row['Name'])
+                tabs = st.tabs([f"Product {i+1}" for i in range(len(gdf))])
 
-                    st.json({
-                        'ID': row['Id'],
-                        'Size': f"{row.get('ContentLength', 0) / (1024*1024):.2f} MB",
-                        'Date': row.get('ContentDate', {}).get('Start'),
-                        'Cloud Cover': row.get('CloudCover', 'N/A')
-                    })
+                for i, tab in enumerate(tabs):
+                    with tab:
+                        row = gdf.iloc[i]
+                        st.subheader(row['Name'])
 
-                    with st.form(key=f"form_{row['Id']}"):
-                        output_dir = st.text_input(
-                            "Select download directory",
-                            value=os.path.join(os.getcwd(), "downloads"),
-                            key=f"dir_{row['Id']}"
-                        )
-                        submit = st.form_submit_button("Download")
+                        st.json({
+                            'ID': row['Id'],
+                            'Size': f"{row.get('ContentLength', 0) / (1024*1024):.2f} MB",
+                            'Date': row.get('ContentDate', {}).get('Start'),
+                            'Cloud Cover': row.get('CloudCover', 'N/A')
+                        })
 
-                        if submit:
-                            progress_placeholder = st.empty()
-                            status_placeholder = st.empty()
-                            
-                            async def download():
-                                async with aiohttp.ClientSession() as session:
-                                    await download_product(
-                                        session,
-                                        row['Id'],
-                                        st.session_state.token,
-                                        row['Name'],
-                                        output_dir,
-                                        progress_placeholder,
-                                        status_placeholder
-                                    )
-                            
-                            asyncio.run(download())
+                        with st.form(key=f"form_{row['Id']}"):
+                            output_dir = st.text_input(
+                                "Select download directory",
+                                value=os.path.join(os.getcwd(), "downloads"),
+                                key=f"dir_{row['Id']}"
+                            )
+                            submit = st.form_submit_button("Download")
+
+                            if submit:
+                                progress_placeholder = st.empty()
+                                status_placeholder = st.empty()
+                                
+                                async def download():
+                                    async with aiohttp.ClientSession() as session:
+                                        await download_product(
+                                            session,
+                                            row['Id'],
+                                            st.session_state.token,
+                                            row['Name'],
+                                            output_dir,
+                                            progress_placeholder,
+                                            status_placeholder
+                                        )
+                                
+                                asyncio.run(download())
 
     st.markdown("</div>", unsafe_allow_html=True)
