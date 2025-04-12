@@ -60,14 +60,20 @@ def get_keycloak_token(username: str, password: str) -> str:
         "grant_type": "password",
     }
     try:
-        r = requests.post(COPERNICUS_AUTH_URL, data=data)
+        r = requests.post(COPERNICUS_AUTH_URL, data=data, timeout=10)
         r.raise_for_status()
-        token = r.json()["access_token"]
-        # Store token in session state
-        st.session_state.auth_token = token
-        return token
+        return r.json()["access_token"]
+    except requests.exceptions.ConnectionError:
+        st.error("Connection Error: Unable to reach Copernicus servers. Please check your internet connection.")
+        return None
+    except requests.exceptions.Timeout:
+        st.error("Connection Timeout: The request took too long. Please try again.")
+        return None
+    except requests.exceptions.RequestException as e:
+        st.error(f"Authentication Error: {str(e)}")
+        return None
     except Exception as e:
-        st.error(f"Authentication failed: {str(e)}")
+        st.error(f"Unexpected Error: {str(e)}")
         return None
 
 def search_products(token: str, bbox: str, collection: str, start_date: str, end_date: str, result_limit: int = 1000):
@@ -509,9 +515,6 @@ with tab2:
                         with st.form(key=f"download_form_{row['Id']}"):
                             # Get the default Downloads folder path
                             downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-                            
-                            # Show where the file will be saved
-                            st.info(f"File will be saved to: {downloads_dir}")
                             
                             download_submitted = st.form_submit_button("Download")
 
