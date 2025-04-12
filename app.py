@@ -510,23 +510,8 @@ with tab2:
                             # Get the default Downloads folder path
                             downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
                             
-                            # Create two columns for the directory input and browse button
-                            dir_col, browse_col = st.columns([3, 1])
-                            
-                            with dir_col:
-                                output_dir = st.text_input(
-                                    "Select download directory",
-                                    value=downloads_dir,
-                                    key=f"dir_{row['Id']}"
-                                )
-                            
-                            with browse_col:
-                                browse_clicked = st.form_submit_button("Browse")
-                            
-                            if browse_clicked:
-                                # Show a message about how to enter the path
-                                st.info("Please enter the full path to your desired download directory")
-                                st.info("Example: C:\\Users\\YourUsername\\Downloads")
+                            # Show where the file will be saved
+                            st.info(f"File will be saved to: {downloads_dir}")
                             
                             download_submitted = st.form_submit_button("Download")
 
@@ -541,7 +526,7 @@ with tab2:
                                             row['Id'],
                                             st.session_state.token,
                                             row['Name'],
-                                            output_dir,
+                                            downloads_dir,
                                             progress_placeholder,
                                             status_placeholder
                                         )
