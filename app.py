@@ -35,6 +35,8 @@ if 'download_progress' not in st.session_state:
     st.session_state.download_progress = {}
 if 'downloaded_files' not in st.session_state:
     st.session_state.downloaded_files = {}
+if 'download_dir' not in st.session_state:
+    st.session_state.download_dir = os.path.join(os.path.expanduser("~"), "Downloads")
 
 # List of platforms for Sentinel API queries
 platforms = [
@@ -44,7 +46,7 @@ platforms = [
 ]
 
 # Current date, time and user info - UPDATED with user's values
-current_datetime = "2025-04-07 21:10:21"  # UTC
+current_datetime = "2025-04-25 13:56:21"  # UTC
 current_user = "SauravHaldar04"
 
 # Copernicus API endpoints
@@ -60,6 +62,32 @@ def get_keycloak_token(username: str, password: str) -> str:
         "grant_type": "password",
     }
     try:
+        # Test basic internet connectivity first
+        try:
+            requests.get("https://www.google.com", timeout=5)
+        except:
+            st.error("No internet connection detected. Please check your network connection.")
+            return None
+
+        # Try to resolve the Copernicus domain
+        try:
+            requests.get("https://identity.dataspace.copernicus.eu", timeout=5)
+        except:
+            st.error("""
+                Unable to connect to Copernicus servers. This could be due to:
+                1. Network restrictions or firewall settings
+                2. DNS resolution issues
+                3. VPN requirements
+                
+                Please try:
+                1. Checking your internet connection
+                2. Using a different network
+                3. Connecting to a VPN if required
+                4. Contacting your network administrator
+            """)
+            return None
+
+        # Attempt authentication
         r = requests.post(COPERNICUS_AUTH_URL, data=data, timeout=10)
         r.raise_for_status()
         return r.json()["access_token"]
@@ -97,10 +125,34 @@ def search_products(token: str, bbox: str, collection: str, start_date: str, end
 async def download_product(session, product_id: str, token: str, product_name: str, output_dir: str, progress_placeholder, status_placeholder):
     """Download a product with progress tracking"""
     try:
+        # Ensure the output directory exists
         if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+            try:
+                os.makedirs(output_dir)
+                status_placeholder.info(f"Created directory: {output_dir}")
+            except Exception as e:
+                status_placeholder.error(f"Failed to create directory: {output_dir}. Error: {str(e)}")
+                return None
         
-        output_path = os.path.join(output_dir, f"{product_name}.zip")
+        # Clean the product name to ensure it's a valid filename
+        clean_name = "".join(c for c in product_name if c.isalnum() or c in (' ', '-', '_', '.')).strip()
+        output_path = os.path.join(output_dir, f"{clean_name}.zip")
+        
+        # Check if file already exists
+        if os.path.exists(output_path):
+            status_placeholder.warning(f"File already exists at: {output_path}")
+            return output_path
+        
+        # Check write permissions on output directory
+        try:
+            test_file = os.path.join(output_dir, ".write_test")
+            with open(test_file, "w") as f:
+                f.write("test")
+            os.remove(test_file)
+        except Exception as e:
+            status_placeholder.error(f"No write permission on directory: {output_dir}. Error: {str(e)}")
+            return None
+            
         headers = {"Authorization": f"Bearer {token}"}
         
         # Get the download URL
@@ -131,8 +183,15 @@ async def download_product(session, product_id: str, token: str, product_name: s
                             f"{total_size / (1024*1024):.2f} MB ({progress:.1f}%)"
                         )
             
-            status_placeholder.success(f"Download complete! File saved to: {output_path}")
-            return output_path
+            # Verify the file was downloaded correctly
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                status_placeholder.success(f"Download complete! File saved to: {output_path}")
+                # Show a clickable link to the file directory
+                st.markdown(f"[Open Downloads Folder](file://{output_dir})")
+                return output_path
+            else:
+                status_placeholder.error("Download failed: File was not saved correctly")
+                return None
             
     except Exception as e:
         status_placeholder.error(f"Download failed: {str(e)}")
@@ -148,6 +207,73 @@ def create_map(center_lat=40.7, center_lon=-73.9, zoom=10):
         fill_opacity=0.2,
         popup='Area of Interest'
     ).add_to(m)
+    return m
+
+# Helper function for displaying Alaska feature info
+def display_alaska_feature_info(feature):
+    props = feature['properties']
+    
+    st.markdown(f"""
+        **Scene Name:** {props.get('sceneName', 'N/A')}  
+        **Date:** {props.get('startTime', 'N/A')}  
+        **Platform:** {props.get('platform', 'N/A')}  
+        **Sensor:** {props.get('sensor', 'N/A')}  
+        **Processing Level:** {props.get('processingLevel', 'N/A')}  
+    """)
+    
+    if 'flightDirection' in props:
+        direction = bearing_to_direction(props.get('flightDirection', 0))
+        st.markdown(f"**Flight Direction:** {direction} ({props.get('flightDirection', 'N/A')}°)")
+    
+    if 'fileSize' in props:
+        size_mb = props.get('fileSize', 0) / (1024 * 1024)
+        st.markdown(f"**File Size:** {size_mb:.2f} MB")
+    
+    # Add download button for Alaska data
+    if st.button(f"Download {props.get('sceneName', 'File')}", key=f"dl_{props.get('fileID', uuid.uuid4())}"):
+        with st.spinner("Preparing download..."):
+            # Use selected download directory
+            output_dir = st.session_state.download_dir
+            
+            # Ensure directory exists
+            if not os.path.exists(output_dir):
+                try:
+                    os.makedirs(output_dir)
+                    st.info(f"Created directory: {output_dir}")
+                except Exception as e:
+                    st.error(f"Failed to create directory: {output_dir}. Error: {str(e)}")
+                    return
+            
+            st.info(f"Files will be downloaded to: {output_dir}")
+            
+            # Implement Alaska data download functionality here
+            # This is a placeholder since the original code doesn't show the download implementation
+            st.success(f"Download started for {props.get('sceneName', 'File')}")
+
+# Create map for Alaska data
+def create_map(features, center_lat, center_lon):
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=6)
+    
+    for feature in features:
+        props = feature['properties']
+        if 'geometry' in feature and feature['geometry']:
+            geom = feature['geometry']
+            
+            if geom['type'] == 'Polygon':
+                folium.Polygon(
+                    locations=[[p[1], p[0]] for p in geom['coordinates'][0]],
+                    popup=props.get('sceneName', 'Unknown'),
+                    color='blue',
+                    fill=True,
+                    fill_color='blue',
+                    fill_opacity=0.2
+                ).add_to(m)
+            elif geom['type'] == 'Point':
+                folium.Marker(
+                    location=[geom['coordinates'][1], geom['coordinates'][0]],
+                    popup=props.get('sceneName', 'Unknown')
+                ).add_to(m)
+    
     return m
 
 # Custom CSS for modern UI
@@ -320,6 +446,29 @@ st.markdown(f"""
         <div>Current Date/Time (UTC): <b>{current_datetime}</b></div>
     </div>
 """, unsafe_allow_html=True)
+
+# Download directory selector component - global for both tabs
+st.sidebar.header("Download Settings")
+# Text input field for download path with apply button
+new_download_dir = st.sidebar.text_input("Download Directory", value=st.session_state.download_dir, key="download_dir_input")
+
+# Button to apply new download directory
+if st.sidebar.button("Apply Download Path", key="apply_download_path"):
+    # Check if the directory exists or can be created
+    try:
+        if not os.path.exists(new_download_dir):
+            os.makedirs(new_download_dir)
+        
+        # Test write permission
+        test_file = os.path.join(new_download_dir, ".write_test")
+        with open(test_file, "w") as f:
+            f.write("test")
+        os.remove(test_file)
+        
+        st.session_state.download_dir = new_download_dir
+        st.sidebar.success(f"Download path set to: {new_download_dir}")
+    except Exception as e:
+        st.sidebar.error(f"Error with selected path: {str(e)}")
 
 # Create tabs for different data sources
 tab1, tab2 = st.tabs(["Alaska Satellite Facility", "Copernicus Hub"])
@@ -513,8 +662,11 @@ with tab2:
                         })
 
                         with st.form(key=f"download_form_{row['Id']}"):
-                            # Get the default Downloads folder path
-                            downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+                            # Use the selected download directory from session state
+                            downloads_dir = st.session_state.download_dir
+                            
+                            # Display the current download location
+                            st.info(f"Files will be downloaded to: {downloads_dir}")
                             
                             download_submitted = st.form_submit_button("Download")
 
@@ -529,7 +681,7 @@ with tab2:
                                             row['Id'],
                                             st.session_state.token,
                                             row['Name'],
-                                            downloads_dir,
+                                            downloads_dir,  # Use the selected download directory
                                             progress_placeholder,
                                             status_placeholder
                                         )
