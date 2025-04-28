@@ -171,23 +171,30 @@ async def download_product(session, product_id: str, token: str, product_name: s
             
             # Download with progress
             downloaded = 0
-            with open(output_path, "wb") as f:
-                async for chunk in response.content.iter_chunked(8192):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        progress = (downloaded / total_size) * 100 if total_size > 0 else 0
-                        progress_placeholder.progress(progress / 100)
-                        status_placeholder.write(
-                            f"Downloading: {downloaded / (1024*1024):.2f} MB / "
-                            f"{total_size / (1024*1024):.2f} MB ({progress:.1f}%)"
-                        )
+            try:
+                with open(output_path, "wb") as f:
+                    async for chunk in response.content.iter_chunked(8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            progress = (downloaded / total_size) * 100 if total_size > 0 else 0
+                            progress_placeholder.progress(progress / 100)
+                            status_placeholder.write(
+                                f"Downloading: {downloaded / (1024*1024):.2f} MB / "
+                                f"{total_size / (1024*1024):.2f} MB ({progress:.1f}%)"
+                            )
+            except Exception as e:
+                status_placeholder.error(f"Error writing file: {str(e)}")
+                return None
             
             # Verify the file was downloaded correctly
             if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
                 status_placeholder.success(f"Download complete! File saved to: {output_path}")
                 # Show a clickable link to the file directory
-                st.markdown(f"[Open Downloads Folder](file://{output_dir})")
+                try:
+                    st.markdown(f"[Open Downloads Folder](file://{output_dir})")
+                except Exception as e:
+                    st.warning(f"Unable to create direct link to download folder: {str(e)}")
                 return output_path
             else:
                 status_placeholder.error("Download failed: File was not saved correctly")
