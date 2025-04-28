@@ -132,7 +132,7 @@ async def download_product(session, product_id: str, token: str, product_name: s
                 status_placeholder.info(f"Created directory: {output_dir}")
             except Exception as e:
                 status_placeholder.error(f"Failed to create directory: {output_dir}. Error: {str(e)}")
-                return None
+                return None, False
         
         # Clean the product name to ensure it's a valid filename
         clean_name = "".join(c for c in product_name if c.isalnum() or c in (' ', '-', '_', '.')).strip()
@@ -165,42 +165,92 @@ async def download_product(session, product_id: str, token: str, product_name: s
                 url = response.headers["Location"]
                 response = await session.get(url, headers=headers, allow_redirects=False)
         
-        # Get file size
-        async with session.get(url, headers=headers) as response:
-            total_size = int(response.headers.get('content-length', 0))
-            status_placeholder.write(f"Total size: {total_size / (1024*1024):.2f} MB")
+        # Get file size using HEAD request
+        try:
+            async with session.head(url, headers=headers) as response:
+                total_size = int(response.headers.get('content-length', 0))
+                status_placeholder.write(f"Total size: {total_size / (1024*1024):.2f} MB")
+                
+                # Check available disk space
+                try:
+                    import shutil
+                    free_space = shutil.disk_usage(output_dir).free
+                    if free_space < total_size * 1.2:  # Add 20% buffer
+                        status_placeholder.error(f"Not enough disk space. Required: {total_size * 1.2 / (1024*1024*1024):.2f} GB, Available: {free_space / (1024*1024*1024):.2f} GB")
+                        return None, False
+                except Exception as e:
+                    status_placeholder.warning(f"Could not check disk space: {str(e)}")
+        except Exception as e:
+            # If HEAD request fails, continue anyway and get size during download
+            status_placeholder.warning(f"Couldn't determine file size in advance: {str(e)}")
+            total_size = 0  # Will be updated during download if available
+        
+        # Create a temporary file for streaming
+        temp_file_path = output_path + ".part"
+        
+        # Stream download directly to disk to handle large files
+        try:
+            # Create a BytesIO object for browser download (limited size)
+            browser_data = io.BytesIO() if total_size < 200 * 1024 * 1024 and total_size > 0 else None  # Only store in memory if < 200 MB
+            can_browser_download = browser_data is not None
             
-            # Create a BytesIO object to store the file data
-            file_data = io.BytesIO()
-            
-            # Download with progress
             downloaded = 0
-            try:
-                async for chunk in response.content.iter_chunked(8192):
-                    if chunk:
-                        file_data.write(chunk)
-                        downloaded += len(chunk)
-                        progress = (downloaded / total_size) * 100 if total_size > 0 else 0
-                        progress_placeholder.progress(progress / 100)
-                        status_placeholder.write(
-                            f"Downloading: {downloaded / (1024*1024):.2f} MB / "
-                            f"{total_size / (1024*1024):.2f} MB ({progress:.1f}%)"
-                        )
-                        
-                # Save to file if requested
-                with open(output_path, "wb") as f:
-                    f.write(file_data.getvalue())
+            async with session.get(url, headers=headers) as response:
+                # If we couldn't get the size before, get it now
+                if total_size == 0:
+                    total_size = int(response.headers.get('content-length', 0))
+                    status_placeholder.write(f"Total size: {total_size / (1024*1024):.2f} MB")
                     
-                # Reset the pointer of BytesIO object for future read
-                file_data.seek(0)
+                    # Update browser_data decision based on actual size
+                    if total_size < 200 * 1024 * 1024 and total_size > 0:
+                        browser_data = io.BytesIO()
+                        can_browser_download = True
+                    else:
+                        browser_data = None
+                        can_browser_download = False
                 
-                status_placeholder.success(f"Download complete!")
-                
-                # Return both the file path and the BytesIO object
-                return (output_path, file_data), False
-            except Exception as e:
-                status_placeholder.error(f"Error writing file: {str(e)}")
-                return None, False
+                with open(temp_file_path, 'wb') as f:
+                    async for chunk in response.content.iter_chunked(8192):
+                        if chunk:
+                            # Write chunk to disk
+                            f.write(chunk)
+                            
+                            # Also save to BytesIO if it's not too large
+                            if can_browser_download:
+                                browser_data.write(chunk)
+                            
+                            downloaded += len(chunk)
+                            progress = (downloaded / total_size) * 100 if total_size > 0 else 0
+                            
+                            # Update progress less frequently to reduce UI load
+                            if int(progress) % 2 == 0 or downloaded == total_size:
+                                progress_placeholder.progress(progress / 100)
+                                status_placeholder.write(
+                                    f"Downloading: {downloaded / (1024*1024):.2f} MB / "
+                                    f"{total_size / (1024*1024):.2f} MB ({progress:.1f}%)"
+                                )
+            
+            # Rename temp file to final file
+            os.rename(temp_file_path, output_path)
+            
+            # Prepare browser download if available
+            if can_browser_download:
+                browser_data.seek(0)
+            
+            status_placeholder.success(f"Download complete! File saved to: {output_path}")
+            
+            # Return both the file path and the BytesIO object (or None if too large for browser download)
+            return (output_path, browser_data), False
+        
+        except Exception as e:
+            # Clean up temp file if download failed
+            if os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except:
+                    pass
+            status_placeholder.error(f"Error downloading file: {str(e)}")
+            return None, False
             
     except Exception as e:
         status_placeholder.error(f"Download failed: {str(e)}")
@@ -756,5 +806,8 @@ with tab2:
                                 mime="application/zip",
                                 key=f"browser_download_{row['Id']}"
                             )
+                        elif download_state['completed'] and download_state['file_data'] is None:
+                            st.success("Download complete! File was saved to your local disk.")
+                            st.info(f"The file was too large to enable browser download. Please check the download directory: {downloads_dir}")
 
     st.markdown("</div>", unsafe_allow_html=True)
