@@ -693,7 +693,18 @@ with tab2:
                             'Date': row.get('ContentDate', {}).get('Start'),
                             'Cloud Cover': row.get('CloudCover', 'N/A')
                         })
+                        
+                        # Store download status in session state
+                        download_key = f"download_{row['Id']}"
+                        if download_key not in st.session_state:
+                            st.session_state[download_key] = {
+                                'started': False,
+                                'completed': False,
+                                'file_data': None,
+                                'file_name': None
+                            }
 
+                        # Form for initiating download
                         with st.form(key=f"download_form_{row['Id']}"):
                             # Use the selected download directory from session state
                             downloads_dir = st.session_state.download_dir
@@ -701,43 +712,49 @@ with tab2:
                             # Display the current download location
                             st.info(f"Files will be downloaded to: {downloads_dir}")
                             
-                            download_submitted = st.form_submit_button("Download")
+                            download_submitted = st.form_submit_button("Start Download")
 
-                            if download_submitted:
-                                progress_placeholder = st.empty()
-                                status_placeholder = st.empty()
-                                
-                                async def download():
-                                    async with aiohttp.ClientSession() as session:
-                                        result, file_exists = await download_product(
-                                            session,
-                                            row['Id'],
-                                            st.session_state.token,
-                                            row['Name'],
-                                            downloads_dir,  # Use the selected download directory
-                                            progress_placeholder,
-                                            status_placeholder
-                                        )
-                                        
-                                        # If file was downloaded successfully or exists
-                                        if result:
-                                            if file_exists:
-                                                # For existing files, just show the path
-                                                status_placeholder.success(f"File already exists: {result}")
-                                            else:
-                                                # For new downloads, offer browser download option
-                                                output_path, file_data = result
-                                                file_name = os.path.basename(output_path)
-                                                
-                                                # Add a download button for browser download
-                                                st.download_button(
-                                                    label="Download to browser",
-                                                    data=file_data,
-                                                    file_name=file_name,
-                                                    mime="application/zip",
-                                                    key=f"browser_download_{row['Id']}"
-                                                )
-                                        
-                                asyncio.run(download())
+                        # Handle download process outside the form
+                        download_state = st.session_state[download_key]
+                        
+                        if download_submitted:
+                            download_state['started'] = True
+                            progress_placeholder = st.empty()
+                            status_placeholder = st.empty()
+                            
+                            # Define the async function outside
+                            async def perform_download():
+                                async with aiohttp.ClientSession() as session:
+                                    result, file_exists = await download_product(
+                                        session,
+                                        row['Id'],
+                                        st.session_state.token,
+                                        row['Name'],
+                                        downloads_dir,
+                                        progress_placeholder,
+                                        status_placeholder
+                                    )
+                                    
+                                    # Store result in session state for later use
+                                    if result and not file_exists:
+                                        output_path, file_data = result
+                                        file_name = os.path.basename(output_path)
+                                        download_state['completed'] = True
+                                        download_state['file_data'] = file_data
+                                        download_state['file_name'] = file_name
+                            
+                            # Run the async function
+                            asyncio.run(perform_download())
+                        
+                        # Display download button outside the form if download is complete
+                        if download_state['completed'] and download_state['file_data'] is not None:
+                            st.success("Download complete! You can now save the file to your browser.")
+                            st.download_button(
+                                label="Download to browser",
+                                data=download_state['file_data'],
+                                file_name=download_state['file_name'],
+                                mime="application/zip",
+                                key=f"browser_download_{row['Id']}"
+                            )
 
     st.markdown("</div>", unsafe_allow_html=True)

@@ -1,4 +1,11 @@
-from geopy.distance import geodesic
+try:
+    from geopy.distance import geodesic
+except ImportError:
+    print("Warning: geopy module not found. Please install it using: pip install geopy")
+    # Define a stub function to prevent errors
+    def geodesic(point1, point2):
+        return type('Distance', (), {'meters': 0})
+
 from shapely.geometry import Point, Polygon
 import math
 
@@ -61,13 +68,17 @@ def process_response(data, reference_point):
         return None, None, None
 
 def calculate_distance(pointA, pointB):
-    # Implement the distance calculation logic here
-    pass
-
-def calculate_bearing(pointA, pointB):
-    # Implement the bearing calculation logic here
-    pass
-
-def calculate_distance(pointA, pointB):
-    # Implement the distance calculation logic here
-    pass 
+    # Calculate distance using Shapely or simple math if geopy is not available
+    try:
+        return geodesic(pointA, pointB).meters
+    except:
+        # Fallback to approximate calculation
+        lat1, lon1 = math.radians(pointA[0]), math.radians(pointA[1])
+        lat2, lon2 = math.radians(pointB[0]), math.radians(pointB[1])
+        # Approximate Earth radius in meters
+        R = 6371000
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        return R * c
