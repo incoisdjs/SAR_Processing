@@ -141,7 +141,8 @@ async def download_product(session, product_id: str, token: str, product_name: s
         # Check if file already exists
         if os.path.exists(output_path):
             status_placeholder.warning(f"File already exists at: {output_path}")
-            return output_path
+            # Return the file path and True to indicate file exists
+            return output_path, True
         
         # Check write permissions on output directory
         try:
@@ -151,7 +152,7 @@ async def download_product(session, product_id: str, token: str, product_name: s
             os.remove(test_file)
         except Exception as e:
             status_placeholder.error(f"No write permission on directory: {output_dir}. Error: {str(e)}")
-            return None
+            return None, False
             
         headers = {"Authorization": f"Bearer {token}"}
         
@@ -169,40 +170,41 @@ async def download_product(session, product_id: str, token: str, product_name: s
             total_size = int(response.headers.get('content-length', 0))
             status_placeholder.write(f"Total size: {total_size / (1024*1024):.2f} MB")
             
+            # Create a BytesIO object to store the file data
+            file_data = io.BytesIO()
+            
             # Download with progress
             downloaded = 0
             try:
+                async for chunk in response.content.iter_chunked(8192):
+                    if chunk:
+                        file_data.write(chunk)
+                        downloaded += len(chunk)
+                        progress = (downloaded / total_size) * 100 if total_size > 0 else 0
+                        progress_placeholder.progress(progress / 100)
+                        status_placeholder.write(
+                            f"Downloading: {downloaded / (1024*1024):.2f} MB / "
+                            f"{total_size / (1024*1024):.2f} MB ({progress:.1f}%)"
+                        )
+                        
+                # Save to file if requested
                 with open(output_path, "wb") as f:
-                    async for chunk in response.content.iter_chunked(8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            progress = (downloaded / total_size) * 100 if total_size > 0 else 0
-                            progress_placeholder.progress(progress / 100)
-                            status_placeholder.write(
-                                f"Downloading: {downloaded / (1024*1024):.2f} MB / "
-                                f"{total_size / (1024*1024):.2f} MB ({progress:.1f}%)"
-                            )
+                    f.write(file_data.getvalue())
+                    
+                # Reset the pointer of BytesIO object for future read
+                file_data.seek(0)
+                
+                status_placeholder.success(f"Download complete!")
+                
+                # Return both the file path and the BytesIO object
+                return (output_path, file_data), False
             except Exception as e:
                 status_placeholder.error(f"Error writing file: {str(e)}")
-                return None
-            
-            # Verify the file was downloaded correctly
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                status_placeholder.success(f"Download complete! File saved to: {output_path}")
-                # Show a clickable link to the file directory
-                try:
-                    st.markdown(f"[Open Downloads Folder](file://{output_dir})")
-                except Exception as e:
-                    st.warning(f"Unable to create direct link to download folder: {str(e)}")
-                return output_path
-            else:
-                status_placeholder.error("Download failed: File was not saved correctly")
-                return None
+                return None, False
             
     except Exception as e:
         status_placeholder.error(f"Download failed: {str(e)}")
-        return None
+        return None, False
 
 def create_map(center_lat=40.7, center_lon=-73.9, zoom=10):
     m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom)
@@ -254,8 +256,32 @@ def display_alaska_feature_info(feature):
             st.info(f"Files will be downloaded to: {output_dir}")
             
             # Implement Alaska data download functionality here
-            # This is a placeholder since the original code doesn't show the download implementation
-            st.success(f"Download started for {props.get('sceneName', 'File')}")
+            try:
+                # Placeholder for actual API download code
+                download_url = props.get('url', '')
+                if download_url:
+                    with requests.get(download_url, stream=True) as r:
+                        r.raise_for_status()
+                        file_name = props.get('sceneName', 'download') + '.zip'
+                        file_path = os.path.join(output_dir, file_name)
+                        with open(file_path, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                        st.success(f"Download complete: {file_name}")
+                        
+                        # Add download button for browser download
+                        with open(file_path, "rb") as f:
+                            st.download_button(
+                                label="Download to browser",
+                                data=f,
+                                file_name=file_name,
+                                mime="application/zip"
+                            )
+                else:
+                    st.error("Download URL not available for this product")
+            except Exception as e:
+                st.error(f"Download failed: {str(e)}")
 
 # Create map for Alaska data
 def create_map(features, center_lat, center_lon):
@@ -683,7 +709,7 @@ with tab2:
                                 
                                 async def download():
                                     async with aiohttp.ClientSession() as session:
-                                        await download_product(
+                                        result, file_exists = await download_product(
                                             session,
                                             row['Id'],
                                             st.session_state.token,
@@ -692,7 +718,26 @@ with tab2:
                                             progress_placeholder,
                                             status_placeholder
                                         )
-                                
+                                        
+                                        # If file was downloaded successfully or exists
+                                        if result:
+                                            if file_exists:
+                                                # For existing files, just show the path
+                                                status_placeholder.success(f"File already exists: {result}")
+                                            else:
+                                                # For new downloads, offer browser download option
+                                                output_path, file_data = result
+                                                file_name = os.path.basename(output_path)
+                                                
+                                                # Add a download button for browser download
+                                                st.download_button(
+                                                    label="Download to browser",
+                                                    data=file_data,
+                                                    file_name=file_name,
+                                                    mime="application/zip",
+                                                    key=f"browser_download_{row['Id']}"
+                                                )
+                                        
                                 asyncio.run(download())
 
     st.markdown("</div>", unsafe_allow_html=True)
