@@ -309,22 +309,13 @@ def display_alaska_feature_info(feature):
         
         # Create download link using HTML
         st.markdown(f"""
-            <a href="{download_url}" download="{file_name}" target="_blank">
-                <button style="
-                    background-color: #2563eb;
-                    color: white;
-                    border-radius: 8px;
-                    padding: 0.5rem 1rem;
-                    font-weight: 600;
-                    border: none;
-                    cursor: pointer;
-                    text-decoration: none;
-                    display: inline-block;
-                    margin-top: 0.5rem;
-                ">
-                    📥 Download {props.get('sceneName', 'File')}
-                </button>
-            </a>
+            <div style="margin: 1rem 0;">
+                <a href="{download_url}" download="{file_name}" target="_blank" style="text-decoration: none;">
+                    <button class="download-btn">
+                        Download {props.get('sceneName', 'File')}
+                    </button>
+                </a>
+            </div>
         """, unsafe_allow_html=True)
         
         # Also show the direct URL for reference
@@ -362,150 +353,400 @@ def create_map(features, center_lat, center_lon):
 # Custom CSS for modern UI
 st.markdown("""
     <style>
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    /* Root variables for consistent theming */
+    :root {
+        --primary-color: #3b82f6;
+        --primary-hover: #2563eb;
+        --secondary-color: #6366f1;
+        --background-color: #f8fafc;
+        --surface-color: #ffffff;
+        --text-primary: #1e293b;
+        --text-secondary: #64748b;
+        --text-muted: #94a3b8;
+        --border-color: #e2e8f0;
+        --success-color: #10b981;
+        --warning-color: #f59e0b;
+        --error-color: #ef4444;
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        --radius-sm: 6px;
+        --radius-md: 8px;
+        --radius-lg: 12px;
+        --spacing-xs: 0.25rem;
+        --spacing-sm: 0.5rem;
+        --spacing-md: 1rem;
+        --spacing-lg: 1.5rem;
+        --spacing-xl: 2rem;
+    }
+    
+    /* Global font family */
+    .stApp, .stApp * {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    }
+    
     /* Main container styling */
     .main {
-        background-color: #f8f9fa;
-        padding: 2rem;
+        background-color: var(--background-color);
+        padding: var(--spacing-xl);
+        min-height: 100vh;
     }
     
     /* Header styling */
     .stApp header {
-        background-color: #ffffff;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        background-color: var(--surface-color);
+        box-shadow: var(--shadow-sm);
+        border-bottom: 1px solid var(--border-color);
     }
     
     /* Title styling */
     h1 {
-        color: #1a1a1a;
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 1.5rem;
+        color: var(--text-primary) !important;
+        font-size: 2.5rem !important;
+        font-weight: 700 !important;
+        margin-bottom: var(--spacing-lg) !important;
+        letter-spacing: -0.025em !important;
+    }
+    
+    h2 {
+        color: var(--text-primary) !important;
+        font-size: 1.875rem !important;
+        font-weight: 600 !important;
+        margin-bottom: var(--spacing-md) !important;
+    }
+    
+    h3 {
+        color: var(--text-primary) !important;
+        font-size: 1.5rem !important;
+        font-weight: 600 !important;
+        margin-bottom: var(--spacing-md) !important;
     }
     
     /* Card styling */
     .card {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        background-color: var(--surface-color);
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-xl);
+        margin-bottom: var(--spacing-lg);
+        box-shadow: var(--shadow-md);
+        border: 1px solid var(--border-color);
+        transition: all 0.2s ease-in-out;
+    }
+    
+    .card:hover {
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-1px);
     }
     
     /* Button styling */
     .stButton button {
-        background-color: #2563eb;
-        color: white;
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-        border: none;
-        transition: all 0.3s ease;
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+        color: white !important;
+        border-radius: var(--radius-md) !important;
+        padding: var(--spacing-sm) var(--spacing-lg) !important;
+        font-weight: 600 !important;
+        font-size: 0.875rem !important;
+        border: none !important;
+        transition: all 0.2s ease-in-out !important;
+        box-shadow: var(--shadow-sm) !important;
+        letter-spacing: 0.025em !important;
     }
     
     .stButton button:hover {
-        background-color: #1d4ed8;
-        transform: translateY(-1px);
+        transform: translateY(-2px) !important;
+        box-shadow: var(--shadow-md) !important;
+        background: linear-gradient(135deg, var(--primary-hover), var(--secondary-color)) !important;
+    }
+    
+    .stButton button:active {
+        transform: translateY(0) !important;
+    }
+    
+    /* Custom download button */
+    .download-btn {
+        background: linear-gradient(135deg, var(--success-color), #059669);
+        color: white;
+        border-radius: var(--radius-md);
+        padding: var(--spacing-sm) var(--spacing-lg);
+        font-weight: 600;
+        font-size: 0.875rem;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        box-shadow: var(--shadow-sm);
+        letter-spacing: 0.025em;
+        text-decoration: none;
+        display: inline-block;
+    }
+    
+    .download-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+        background: linear-gradient(135deg, #059669, #047857);
     }
     
     /* Input field styling */
-    .stTextInput input, .stNumberInput input {
-        border-radius: 8px;
-        border: 1px solid #e2e8f0;
-        padding: 0.5rem;
+    .stTextInput input, .stNumberInput input, .stSelectbox select {
+        border-radius: var(--radius-md) !important;
+        border: 2px solid var(--border-color) !important;
+        padding: var(--spacing-sm) var(--spacing-md) !important;
+        font-size: 0.875rem !important;
+        transition: all 0.2s ease-in-out !important;
+        background-color: var(--surface-color) !important;
+    }
+    
+    .stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus {
+        border-color: var(--primary-color) !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+        outline: none !important;
+    }
+    
+    /* Date input styling */
+    .stDateInput input {
+        border-radius: var(--radius-md) !important;
+        border: 2px solid var(--border-color) !important;
+        padding: var(--spacing-sm) var(--spacing-md) !important;
+        font-size: 0.875rem !important;
+        transition: all 0.2s ease-in-out !important;
     }
     
     /* Map container styling */
     .map-container {
-        border-radius: 10px;
+        border-radius: var(--radius-lg);
         overflow: hidden;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: var(--shadow-lg);
+        border: 1px solid var(--border-color);
+        margin: var(--spacing-lg) 0;
     }
     
-    /* Feature info styling */
-    .feature-info {
-        background-color: #f8fafc;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: var(--background-color) !important;
+        border-radius: var(--radius-md) !important;
+        border: 1px solid var(--border-color) !important;
+        padding: var(--spacing-md) !important;
+        font-weight: 500 !important;
+        color: var(--text-primary) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+    
+    .streamlit-expanderHeader:hover {
+        background-color: var(--surface-color) !important;
+        box-shadow: var(--shadow-sm) !important;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: var(--surface-color) !important;
+        border: 1px solid var(--border-color) !important;
+        border-top: none !important;
+        border-radius: 0 0 var(--radius-md) var(--radius-md) !important;
+        padding: var(--spacing-lg) !important;
     }
     
     /* Tab styling */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
+        gap: var(--spacing-md);
+        background-color: var(--background-color);
+        padding: var(--spacing-sm);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-color);
     }
     
     .stTabs [data-baseweb="tab"] {
-        padding: 1rem 2rem;
-        border-radius: 8px;
+        padding: var(--spacing-md) var(--spacing-lg) !important;
+        border-radius: var(--radius-md) !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease-in-out !important;
+        border: 1px solid transparent !important;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: var(--surface-color) !important;
+        border-color: var(--border-color) !important;
+    }
+    
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+        box-shadow: var(--shadow-sm) !important;
+    }
+    
+    /* Sidebar styling */
+    .css-1d391kg {
+        background-color: var(--surface-color) !important;
+        border-right: 1px solid var(--border-color) !important;
+    }
+    
+    /* Form styling */
+    .stForm {
+        background-color: var(--surface-color) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: var(--radius-lg) !important;
+        padding: var(--spacing-lg) !important;
+        margin: var(--spacing-md) 0 !important;
     }
     
     /* Loading spinner styling */
     .stSpinner > div {
-        border-color: #2563eb;
+        border-color: var(--primary-color) var(--border-color) var(--border-color) var(--border-color) !important;
     }
     
-    /* Success/Error message styling */
+    /* Alert styling */
     .stAlert {
-        border-radius: 8px;
+        border-radius: var(--radius-md) !important;
+        border: none !important;
+        box-shadow: var(--shadow-sm) !important;
+        margin: var(--spacing-md) 0 !important;
+    }
+    
+    .stSuccess {
+        background-color: #f0fdf4 !important;
+        color: #166534 !important;
+        border-left: 4px solid var(--success-color) !important;
+    }
+    
+    .stError {
+        background-color: #fef2f2 !important;
+        color: #991b1b !important;
+        border-left: 4px solid var(--error-color) !important;
+    }
+    
+    .stWarning {
+        background-color: #fffbeb !important;
+        color: #92400e !important;
+        border-left: 4px solid var(--warning-color) !important;
+    }
+    
+    .stInfo {
+        background-color: #eff6ff !important;
+        color: #1e40af !important;
+        border-left: 4px solid var(--primary-color) !important;
     }
     
     /* User info bar */
     .user-info-bar {
-        background-color: #f1f5f9;
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
+        background: linear-gradient(135deg, var(--surface-color), #f1f5f9);
+        padding: var(--spacing-md) var(--spacing-lg);
+        border-radius: var(--radius-lg);
+        margin-bottom: var(--spacing-lg);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        font-size: 0.9rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-sm);
     }
-
-    /* Token display */
-    .token-display {
-        background-color: #1e293b;
-        color: #94a3b8;
-        padding: 1rem;
-        border-radius: 8px;
-        font-family: monospace;
-        overflow-x: auto;
-        white-space: pre-wrap;
-        word-break: break-all;
-        margin-top: 1rem;
-        margin-bottom: 1rem;
+    
+    /* Code block styling */
+    .stCodeBlock {
+        background-color: #1e293b !important;
+        border-radius: var(--radius-md) !important;
+        padding: var(--spacing-lg) !important;
+        margin: var(--spacing-md) 0 !important;
+        border: 1px solid #334155 !important;
     }
     
     /* Progress bar styling */
-    .progress-container {
-        margin: 1rem 0;
+    .stProgress > div > div {
+        background-color: var(--primary-color) !important;
+        border-radius: var(--radius-sm) !important;
     }
     
-    .progress-bar {
-        height: 10px;
-        background-color: #e2e8f0;
-        border-radius: 5px;
-        overflow: hidden;
+    .stProgress > div {
+        background-color: var(--border-color) !important;
+        border-radius: var(--radius-sm) !important;
     }
     
-    .progress-bar-fill {
-        height: 100%;
-        background-color: #2563eb;
-        transition: width 0.3s ease;
+    /* JSON viewer styling */
+    .stJson {
+        background-color: var(--background-color) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: var(--radius-md) !important;
+        padding: var(--spacing-md) !important;
     }
     
-    .progress-text {
-        margin-top: 0.5rem;
-        font-size: 0.9rem;
-        color: #64748b;
+    /* Checkbox styling */
+    .stCheckbox {
+        margin: var(--spacing-sm) 0 !important;
     }
     
-    /* Download info box */
-    .download-info {
-        background-color: #f0f9ff;
-        border-left: 4px solid #2563eb;
-        padding: 1rem;
-        border-radius: 4px;
-        margin: 1rem 0;
+    /* Metric styling */
+    .metric-container {
+        background-color: var(--surface-color);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-lg);
+        margin: var(--spacing-md);
+        box-shadow: var(--shadow-sm);
+        text-align: center;
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: var(--background-color);
+        border-radius: var(--radius-sm);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: var(--radius-sm);
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .main {
+            padding: var(--spacing-md);
+        }
+        
+        .card {
+            padding: var(--spacing-lg);
+        }
+        
+        h1 {
+            font-size: 2rem !important;
+        }
+        
+        .user-info-bar {
+            flex-direction: column;
+            gap: var(--spacing-sm);
+            text-align: center;
+        }
+    }
+    
+    /* Animation keyframes */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .card {
+        animation: fadeInUp 0.3s ease-out;
+    }
+    
+    /* Focus states for accessibility */
+    button:focus, input:focus, select:focus {
+        outline: 2px solid var(--primary-color) !important;
+        outline-offset: 2px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -513,10 +754,10 @@ st.markdown("""
 # Main title with modern styling
 st.markdown("""
     <div style='text-align: center; margin-bottom: 2rem;'>
-        <h1 style='color: #1a1a1a; font-size: 2.5rem; font-weight: 700;'>
+        <h1 style='color: var(--text-primary); font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem;'>
             Satellite Data Explorer
         </h1>
-        <p style='color: #64748b; font-size: 1.1rem;'>
+        <p style='color: var(--text-secondary); font-size: 1.1rem; font-weight: 400; margin: 0;'>
             Explore and download satellite imagery from multiple sources
         </p>
     </div>
@@ -559,7 +800,7 @@ tab1, tab2 = st.tabs(["Alaska Satellite Facility", "Copernicus Hub"])
 with tab1:
     st.markdown("""
         <div class='card'>
-            <h2 style='color: #1a1a1a; font-size: 1.5rem; margin-bottom: 1rem;'>
+            <h2 style='color: var(--text-primary); font-size: 1.5rem; margin-bottom: 1rem;'>
                 Search Parameters
             </h2>
     """, unsafe_allow_html=True)
@@ -609,7 +850,7 @@ with tab1:
                 
             st.markdown(f"""
                 <div class='card'>
-                    <h3 style='color: #1a1a1a; font-size: 1.25rem; margin-bottom: 1rem;'>
+                    <h3 style='color: var(--text-primary); font-size: 1.25rem; margin-bottom: 1rem;'>
                         {platform}
                     </h3>
             """, unsafe_allow_html=True)
@@ -627,7 +868,7 @@ with tab1:
         if '_all_features' in st.session_state.alaska_search_results:
             st.markdown("""
                 <div class='card'>
-                    <h3 style='color: #1a1a1a; font-size: 1.25rem; margin-bottom: 1rem;'>
+                    <h3 style='color: var(--text-primary); font-size: 1.25rem; margin-bottom: 1rem;'>
                         Coverage Map
                     </h3>
             """, unsafe_allow_html=True)
