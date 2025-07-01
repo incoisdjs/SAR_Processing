@@ -29,6 +29,8 @@ if 'auth_token' not in st.session_state:
     st.session_state.auth_token = None
 if 'search_results' not in st.session_state:
     st.session_state.search_results = {}
+if 'alaska_search_results' not in st.session_state:
+    st.session_state.alaska_search_results = {}
 if 'download_data' not in st.session_state:
     st.session_state.download_data = {}
 if 'download_progress' not in st.session_state:
@@ -281,57 +283,55 @@ def display_alaska_feature_info(feature):
     """)
     
     if 'flightDirection' in props:
-        direction = bearing_to_direction(props.get('flightDirection', 0))
-        st.markdown(f"**Flight Direction:** {direction} ({props.get('flightDirection', 'N/A')}°)")
+        try:
+            # Convert flightDirection to float if it's a string
+            flight_direction = props.get('flightDirection', 0)
+            if isinstance(flight_direction, str):
+                flight_direction = float(flight_direction)
+            direction = bearing_to_direction(flight_direction)
+            st.markdown(f"**Flight Direction:** {direction} ({flight_direction}°)")
+        except (ValueError, TypeError):
+            # If conversion fails, just display the raw value
+            st.markdown(f"**Flight Direction:** {props.get('flightDirection', 'N/A')}")
     
     if 'fileSize' in props:
         size_mb = props.get('fileSize', 0) / (1024 * 1024)
         st.markdown(f"**File Size:** {size_mb:.2f} MB")
+    elif 'bytes' in props:
+        # Use bytes field if fileSize is not available
+        size_mb = int(props.get('bytes', 0)) / (1024 * 1024)
+        st.markdown(f"**File Size:** {size_mb:.2f} MB")
     
-    # Add download button for Alaska data
-    if st.button(f"Download {props.get('sceneName', 'File')}", key=f"dl_{props.get('fileID', uuid.uuid4())}"):
-        with st.spinner("Preparing download..."):
-            # Use selected download directory
-            output_dir = st.session_state.download_dir
-            
-            # Ensure directory exists
-            if not os.path.exists(output_dir):
-                try:
-                    os.makedirs(output_dir)
-                    st.info(f"Created directory: {output_dir}")
-                except Exception as e:
-                    st.error(f"Failed to create directory: {output_dir}. Error: {str(e)}")
-                    return
-            
-            st.info(f"Files will be downloaded to: {output_dir}")
-            
-            # Implement Alaska data download functionality here
-            try:
-                # Placeholder for actual API download code
-                download_url = props.get('url', '')
-                if download_url:
-                    with requests.get(download_url, stream=True) as r:
-                        r.raise_for_status()
-                        file_name = props.get('sceneName', 'download') + '.zip'
-                        file_path = os.path.join(output_dir, file_name)
-                        with open(file_path, 'wb') as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
-                        st.success(f"Download complete: {file_name}")
-                        
-                        # Add download button for browser download
-                        with open(file_path, "rb") as f:
-                            st.download_button(
-                                label="Download to browser",
-                                data=f,
-                                file_name=file_name,
-                                mime="application/zip"
-                            )
-                else:
-                    st.error("Download URL not available for this product")
-            except Exception as e:
-                st.error(f"Download failed: {str(e)}")
+    # Simple download button using direct URL
+    download_url = props.get('url', '')
+    if download_url:
+        file_name = props.get('fileName', props.get('sceneName', 'download') + '.zip')
+        
+        # Create download link using HTML
+        st.markdown(f"""
+            <a href="{download_url}" download="{file_name}" target="_blank">
+                <button style="
+                    background-color: #2563eb;
+                    color: white;
+                    border-radius: 8px;
+                    padding: 0.5rem 1rem;
+                    font-weight: 600;
+                    border: none;
+                    cursor: pointer;
+                    text-decoration: none;
+                    display: inline-block;
+                    margin-top: 0.5rem;
+                ">
+                    📥 Download {props.get('sceneName', 'File')}
+                </button>
+            </a>
+        """, unsafe_allow_html=True)
+        
+        # Also show the direct URL for reference
+        with st.expander("Show Download URL"):
+            st.code(download_url, language="text")
+    else:
+        st.warning("Download URL not available for this product")
 
 # Create map for Alaska data
 def create_map(features, center_lat, center_lon):
@@ -579,58 +579,79 @@ with tab1:
     
     if st.button("Search Alaska Data", key="alaska_search"):
         with st.spinner("Fetching data..."):
+            # Clear previous results
+            st.session_state.alaska_search_results = {}
+            
             any_valid_features = False
             all_features = []
             
             for platform in platforms:
                 data = fetch_data(platform, latitude, longitude, start_date, end_date, result_limit)
                 if data and 'features' in data and data['features']:
-                    st.markdown(f"""
-                        <div class='card'>
-                            <h3 style='color: #1a1a1a; font-size: 1.25rem; margin-bottom: 1rem;'>
-                                {platform}
-                            </h3>
-                    """, unsafe_allow_html=True)
-                    
+                    st.session_state.alaska_search_results[platform] = data['features']
                     any_valid_features = True
                     all_features.extend(data['features'])
-                    
-                    for feature in data['features']:
-                        with st.expander(f"Scene: {feature['properties'].get('sceneName', 'Unknown')}", expanded=True):
-                            display_alaska_feature_info(feature)
-                            
-                            if st.checkbox("Show Raw Data", key=f"raw_{feature['properties'].get('fileID', str(uuid.uuid4()))}"):
-                                st.json(feature)
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
             
             if any_valid_features:
-                st.markdown("""
-                    <div class='card'>
-                        <h3 style='color: #1a1a1a; font-size: 1.25rem; margin-bottom: 1rem;'>
-                            Coverage Map
-                        </h3>
-                """, unsafe_allow_html=True)
+                st.session_state.alaska_search_results['_all_features'] = all_features
+                st.session_state.alaska_search_results['_center_coords'] = {
+                    'lat': latitude,
+                    'lon': longitude
+                }
+        st.rerun()
+    
+    # Display stored results
+    if st.session_state.alaska_search_results:
+        # Display individual platform results
+        for platform, features in st.session_state.alaska_search_results.items():
+            if platform.startswith('_'):  # Skip metadata keys
+                continue
                 
-                try:
-                    center_lat = float(all_features[0]['properties'].get('centerLat', latitude))
-                    center_lon = float(all_features[0]['properties'].get('centerLon', longitude))
+            st.markdown(f"""
+                <div class='card'>
+                    <h3 style='color: #1a1a1a; font-size: 1.25rem; margin-bottom: 1rem;'>
+                        {platform}
+                    </h3>
+            """, unsafe_allow_html=True)
+            
+            for feature in features:
+                with st.expander(f"Scene: {feature['properties'].get('sceneName', 'Unknown')}", expanded=False):
+                    display_alaska_feature_info(feature)
                     
-                    with st.spinner("Generating map..."):
-                        m = create_map(all_features, center_lat, center_lon)
-                        st.markdown('<div class="map-container">', unsafe_allow_html=True)
-                        map_data = st_folium(m, width=800, height=600, returned_objects=["last_active_drawing", "last_clicked"])
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        
-                        # Display information about clicked locations
-                        if map_data["last_clicked"]:
-                            st.write("Clicked location:", map_data["last_clicked"])
-                except Exception as e:
-                    st.error(f"Error displaying map: {str(e)}")
+                    if st.checkbox("Show Raw Data", key=f"raw_{feature['properties'].get('fileID', str(uuid.uuid4()))}"):
+                        st.json(feature)
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Display map if we have features
+        if '_all_features' in st.session_state.alaska_search_results:
+            st.markdown("""
+                <div class='card'>
+                    <h3 style='color: #1a1a1a; font-size: 1.25rem; margin-bottom: 1rem;'>
+                        Coverage Map
+                    </h3>
+            """, unsafe_allow_html=True)
+            
+            try:
+                all_features = st.session_state.alaska_search_results['_all_features']
+                center_coords = st.session_state.alaska_search_results['_center_coords']
                 
-                st.markdown("</div>", unsafe_allow_html=True)
-            else:
-                st.warning("No valid features returned for any platform.")
+                center_lat = float(all_features[0]['properties'].get('centerLat', center_coords['lat']))
+                center_lon = float(all_features[0]['properties'].get('centerLon', center_coords['lon']))
+                
+                with st.spinner("Generating map..."):
+                    m = create_map(all_features, center_lat, center_lon)
+                    st.markdown('<div class="map-container">', unsafe_allow_html=True)
+                    map_data = st_folium(m, width=800, height=600, returned_objects=["last_active_drawing", "last_clicked"])
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Display information about clicked locations
+                    if map_data["last_clicked"]:
+                        st.write("Clicked location:", map_data["last_clicked"])
+            except Exception as e:
+                st.error(f"Error displaying map: {str(e)}")
+            
+            st.markdown("</div>", unsafe_allow_html=True)
 
 with tab2:
     # Create two columns for main content and sidebar with adjusted widths
