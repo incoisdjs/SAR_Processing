@@ -294,13 +294,32 @@ def display_alaska_feature_info(feature):
             # If conversion fails, just display the raw value
             st.markdown(f"**Flight Direction:** {props.get('flightDirection', 'N/A')}")
     
-    if 'fileSize' in props:
-        size_mb = props.get('fileSize', 0) / (1024 * 1024)
+    # Handle file size from different possible fields
+    size_mb = None
+    if 'fileSize' in props and props['fileSize'] is not None:
+        try:
+            size_mb = float(props['fileSize']) / (1024 * 1024)
+        except (ValueError, TypeError):
+            pass
+    elif 'bytes' in props and props['bytes'] is not None:
+        try:
+            # Handle both string/number and dict cases for bytes field
+            bytes_value = props['bytes']
+            if isinstance(bytes_value, (str, int, float)):
+                size_mb = float(bytes_value) / (1024 * 1024)
+            elif isinstance(bytes_value, dict):
+                # If it's a dict, look for common keys that might contain the size
+                for key in ['value', 'size', 'bytes', 'length']:
+                    if key in bytes_value and bytes_value[key] is not None:
+                        size_mb = float(bytes_value[key]) / (1024 * 1024)
+                        break
+        except (ValueError, TypeError):
+            pass
+    
+    if size_mb is not None:
         st.markdown(f"**File Size:** {size_mb:.2f} MB")
-    elif 'bytes' in props:
-        # Use bytes field if fileSize is not available
-        size_mb = int(props.get('bytes', 0)) / (1024 * 1024)
-        st.markdown(f"**File Size:** {size_mb:.2f} MB")
+    else:
+        st.markdown("**File Size:** N/A")
     
     # Simple download button using direct URL
     download_url = props.get('url', '')
